@@ -9,9 +9,9 @@ using the same constraints, minus the goal constraint. Tracks the first `N`
 time steps.
 """
 function gen_tracking_problem(prob::TO.Problem, N;
-        Qk = 10.0,
-        Rk = 0.1,
-        Qfk = Qk,
+        Q = Diagonal(@SVector ones(size(prob.model)[1])),
+        R = Diagonal(@SVector ones(size(prob.model)[2])),
+        Qf = Q,
     )
     n,m = size(prob)
     dt = prob.Z[1].dt
@@ -23,9 +23,6 @@ function gen_tracking_problem(prob::TO.Problem, N;
     xf = state(Z[N])  # this actually doesn't effect anything
 
     # Generate a cost that tracks the trajectory
-    Q = Diagonal(@SVector fill(Qk, n))
-    R = Diagonal(@SVector fill(Rk, m))
-    Qf = Diagonal(@SVector fill(Qfk, n))
     obj = TO.TrackingObjective(Q, R, Z, Qf=Qf)
 
     # Use the same constraints, except the Goal constraint
@@ -40,6 +37,8 @@ function gen_tracking_problem(prob::TO.Problem, N;
     end
 
     prob = TO.Problem(prob.model, obj, xf, tf, x0=x0, constraints=cons,
+        X0 = states(prob)[1:N],
+        U0 = controls(prob)[1:N-1],
         integration=TO.integration(prob)
     )
     initial_trajectory!(prob, Z)
