@@ -122,7 +122,7 @@ iterations(solver)
 Z_shift = deepcopy(TO.get_trajectory(solver))
 Z_shift_init = deepcopy(TO.get_trajectory(solver))
 
-x_shift = 0.1
+x_shift = 0.035
 for t = 1:T
     if t > 1
         RD.set_state!(Z_shift_init[t], states(Z_shift_init)[t] + [x_shift; 0.0; 0.0; 0.0; x_shift; 0.0; 0.0; 0.0; 0.0])
@@ -134,18 +134,29 @@ Z_track = TO.Traj([TO.get_trajectory(solver)[1:end]...,
     TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...,
+	TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...])
 
-# Z_track = TO.Traj([TO.get_trajectory(solver)[1:end]...,
+# Z_track_shift = TO.Traj([TO.get_trajectory(solver)[1:end]...,
 #     TO.get_trajectory(solver)[2:end]...,
 #     Z_shift_init[2:end]...,
 #     Z_shift[2:end]...,
 #     Z_shift[2:end]...])
+Z_track_shift = TO.Traj([Z_shift[1:end]...,
+    Z_shift[2:end]...,
+    Z_shift[2:end]...,
+    Z_shift[2:end]...,
+	Z_shift[2:end]...,
+    Z_shift[2:end]...])
 X_track = states(Z_track)
+X_track_shift = states(Z_track_shift)
 U_track = controls(Z_track)
 
 using Plots
 plot(hcat(X_track[1:4:end]...)[1:model.nq, :]',
+    labels=["x" "z" "t" "r"],
+    width = 2.0, legend = :right)
+plot(hcat(X_track_shift[1:4:end]...)[1:model.nq, :]',
     labels=["x" "z" "t" "r"],
     width = 2.0, legend = :right)
 plot(hcat(U_track[1:4:end]...)[1:model.nu, :]',
@@ -188,7 +199,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         # Update initial state by using 1st control, and adding some noise
         # x0 = discrete_dynamics(TO.integration(prob_mpc),
         #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 5.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
+		w0 = (i == 101 ? 0.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
 			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
@@ -198,7 +209,11 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         X_traj[i+1] = x0
 
         # Update tracking cost
-        TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		if i >= 101
+			TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
+		else
+        	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		end
 
         # Shift the initial trajectory
         RD.shift_fill!(prob_mpc.Z)
@@ -234,7 +249,7 @@ opts_mpc = SolverOptions(
     penalty_initial = 1000.0,
     penalty_scaling = 10.0,
     projected_newton = false,
-    iterations = 50)
+    iterations = 100)
 
 T_mpc = 101
 prob_mpc = gen_tracking_problem(prob, T_mpc,
@@ -242,10 +257,13 @@ prob_mpc = gen_tracking_problem(prob, T_mpc,
     R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-1, 1.0e-1, 1.0e-1])),
     Qf = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])))
 
-N_mpc = 400
+N_mpc = 500
 X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 
 plot(hcat(X_track[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
+    labels = "", legend = :bottomleft,
+    width = 2.0, color = ["red" "green" "blue" "orange"])
+plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottomleft,
     width = 2.0, color = ["red" "green" "blue" "orange"])
 plot!(hcat(X_traj[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
