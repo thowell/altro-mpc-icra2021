@@ -11,21 +11,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 
 using JLD2
-@load joinpath(@__DIR__, "hopper_vertical_gait.jld2") x̄ _ū h̄
-
-function Altro.initialize!(solver::Altro.iLQRSolver)
-	Altro.reset!(solver)
-    Altro.set_verbosity!(solver)
-    Altro.clear_cache!(solver)
-
-    solver.ρ[1] = solver.opts.bp_reg_initial
-    solver.dρ[1] = 0.0
-
-    # Initial rollout
-    rollout!(solver)
-	# @warn "skip initial rollout!"
-    TO.cost!(solver.obj, solver.Z)
-end
+@load joinpath(@__DIR__, "hopper_vertical_gait.jld2") x̄ ū h̄ x_proj u_proj
 
 # Model and discretization
 include(joinpath(@__DIR__, "hopper.jl"))
@@ -33,21 +19,18 @@ include(joinpath(@__DIR__, "hopper.jl"))
 n, m = size(model)
 
 # Horizon
-# _T = length(x̄)
-T = length(x̄) #2 * length(x̄) - 1
+T = length(x̄)
 
 # Time step
 tf = sum(h̄)
 h = h̄[1]
 
 # Objective
-q1 = x̄[1][1:model.nq]
-x1 = [q1; q1; 0.0]
-xT = [q1; q1; 0.0]
-# X0 = [[[x̄[t]; 0.0] for t = 1:_T]..., [[x̄[t]; 0.0] for t = 2:_T]...]
-# U0 = [deepcopy(_ū)..., deepcopy(_ū)...]
-X0 = [[x̄[t]; 0.0] for t = 1:T]
-U0 = deepcopy(_ū)
+x1 = [x_proj[1]; 0.0]
+xT = [x_proj[T]; 0.0]
+
+X0 = [[x_proj[t]; 0.0] for t = 1:T]
+U0 = [u_proj[t][1:5] for t = 1:T-1]
 
 Q = Diagonal(1.0 * @SVector ones(n))
 R = Diagonal(1.0e-1 * @SVector ones(m))
@@ -74,7 +57,7 @@ opts = SolverOptions(
     penalty_scaling = 10.0,
     penalty_initial = 1.0,
     projected_newton = false,
-    constraint_tolerance = 1.0e-2,
+    constraint_tolerance = 1.0e-3,
     iterations = 500,
     iterations_inner = 100,
     iterations_linesearch = 100,
@@ -84,7 +67,7 @@ prob = TO.Problem(model, obj, xT, tf,
     U0 = U0,
     X0 = X0,
     dt = h,
-    x0 = x1, constraints = cons, integration = PassThrough)
+    x0 = copy(x1), constraints = cons, integration = PassThrough)
 
 # FIRST PROCESSING
 solver = ALTROSolver(prob, opts, verbose = 2)
@@ -95,31 +78,22 @@ cost(solver)           # final cost
 iterations(solver)     # total number of iterations
 
 # Get the state and control trajectories
-X = states(solver)
+X = states(solver.solver_al.solver_uncon.Z̄)
 U = controls(solver)
 
 using Plots
-plot(hcat(X...)')
-plot(hcat(U...)', linetype=:steppost)
+plot(hcat(state_to_configuration(X)...)',
+	color = :black,
+	width = 1.0)
+
+plot(hcat(U...)[1:2, :]',
+	linetype = :steppost,
+	color = :black,
+	width = 1.0)
 
 vis = Visualizer()
 render(vis)
 visualize!(vis, model, state_to_configuration(X), Δt = h)
-
-# SECOND PROCESSING
-prob = TO.Problem(model, obj, xT, tf,
-    U0 = U,
-    X0 = X,
-    dt = h,
-    x0 = x1, constraints = cons, integration = PassThrough)
-
-
-solver = ALTROSolver(prob, opts, verbose = 2)
-cost(solver)           # initial cost
-@time solve!(solver)   # solve with ALTRO
-max_violation(solver)  # max constraint violation
-cost(solver)           # final cost
-iterations(solver)
 
 # SHIFT TRAJECTORY
 Z_shift = deepcopy(TO.get_trajectory(solver))
@@ -140,17 +114,13 @@ Z_track = TO.Traj([TO.get_trajectory(solver)[1:end]...,
 	TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...])
 
-# Z_track_shift = TO.Traj([TO.get_trajectory(solver)[1:end]...,
-#     TO.get_trajectory(solver)[2:end]...,
-#     Z_shift_init[2:end]...,
-#     Z_shift[2:end]...,
-#     Z_shift[2:end]...])
 Z_track_shift = TO.Traj([Z_shift[1:end]...,
     Z_shift[2:end]...,
     Z_shift[2:end]...,
     Z_shift[2:end]...,
 	Z_shift[2:end]...,
     Z_shift[2:end]...])
+
 X_track = states(Z_track)
 X_track_shift = states(Z_track_shift)
 U_track = controls(Z_track)
@@ -202,7 +172,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         # Update initial state by using 1st control, and adding some noise
         # x0 = discrete_dynamics(TO.integration(prob_mpc),
         #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 1.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
+		w0 = (i == 101 ? 0.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
 			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
@@ -246,8 +216,8 @@ end
 
 Random.seed!(1)
 opts_mpc = SolverOptions(
-    cost_tolerance = 1.0e-4,
-    cost_tolerance_intermediate = 1.0e-4,
+    cost_tolerance = 1.0e-3,
+    cost_tolerance_intermediate = 1.0e-2,
     constraint_tolerance = 1.0e-2,
     reset_duals = false,
     penalty_initial = 1000.0,
@@ -257,7 +227,7 @@ opts_mpc = SolverOptions(
 
 T_mpc = 101
 prob_mpc = gen_tracking_problem(prob, T_mpc,
-    Q = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])),
+    Q = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])),
     R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-1, 1.0e-1, 1.0e-1])),
     Qf = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])))
 

@@ -22,7 +22,7 @@ function Altro.initialize!(solver::Altro.iLQRSolver)
     solver.dρ[1] = 0.0
 
     # Initial rollout
-    rollout!(solver)
+    # rollout!(solver)
 	# @warn "skip initial rollout!"
     TO.cost!(solver.obj, solver.Z)
 end
@@ -74,7 +74,7 @@ opts = SolverOptions(
     penalty_scaling = 10.0,
     penalty_initial = 1.0,
     projected_newton = false,
-    constraint_tolerance = 1.0e-2,
+    constraint_tolerance = 1.0e-1,
     iterations = 500,
     iterations_inner = 100,
     iterations_linesearch = 100,
@@ -99,12 +99,12 @@ X = states(solver)
 U = controls(solver)
 
 using Plots
-plot(hcat(X...)')
-plot(hcat(U...)', linetype=:steppost)
+plot(hcat(x̄...)')
+plot(hcat(_ū...)[1:10, :]', linetype=:steppost)
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X), Δt = h)
+visualize!(vis, model_sim, state_to_configuration(X), Δt = h)
 
 # SECOND PROCESSING
 prob = TO.Problem(model, obj, xT, tf,

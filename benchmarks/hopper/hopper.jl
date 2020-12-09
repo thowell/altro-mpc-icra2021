@@ -126,9 +126,8 @@ function no_slip(model::HopperTO, x⁺, u, h)
 	q3 = view(x⁺, model.nq .+ (1:model.nq))
 	q2 = view(x⁺, 1:model.nq)
 	λ = view(u, model.idx_λ)
-	s = view(u, model.idx_s)
 
-	return s[1] - (λ' * _P_func(model, q3) * (q3 - q2) / h)[1]
+	return (λ' * _P_func(model, q3) * (q3 - q2) / h)[1]
 end
 
 function friction_cone(model::HopperTO, u)
@@ -206,7 +205,7 @@ function RobotDynamics.discrete_dynamics(::Type{PassThrough}, model::HopperTO, x
 	return [y; λ]
 end
 
-RobotDynamics.discrete_dynamics(PassThrough, model, (@SVector rand(size(model)[1])), (@SVector rand(size(model)[2])), 1, 0.1)
+# RobotDynamics.discrete_dynamics(PassThrough, model, (@SVector rand(size(model)[1])), (@SVector rand(size(model)[2])), 1, 0.1)
 
 function RobotDynamics.discrete_jacobian!(::Type{PassThrough}, ∇f, model::HopperTO,
 		z::AbstractKnotPoint{T,N,M}) where {T,N,M,Q<:RobotDynamics.Explicit}

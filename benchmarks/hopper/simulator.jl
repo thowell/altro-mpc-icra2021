@@ -1,4 +1,5 @@
 include("/home/taylor/Research/DirectMotionPlanning/src/DirectMotionPlanning.jl")
+# switch workspace
 include("/home/taylor/Research/DirectMotionPlanning/src/problem.jl")
 include("/home/taylor/Research/DirectMotionPlanning/models/hopper.jl")
 include("/home/taylor/Research/DirectMotionPlanning/src/constraints/contact.jl")
@@ -56,7 +57,7 @@ function step_contact(model, x1, u1, w1, h)
     return x[end]
 end
 
-step_contact(model_sim, rand(model_sim.n), rand(model_sim.m)[1:model.nu], zeros(model_sim.nq), 0.01)
+# step_contact(model_sim, rand(model_sim.n), rand(model_sim.m)[1:model.nu], zeros(model_sim.nq), 0.01)
 
 # x1 = rand(model_sim.n)
 # u1 = rand(model_sim.m)[1:model.nu]

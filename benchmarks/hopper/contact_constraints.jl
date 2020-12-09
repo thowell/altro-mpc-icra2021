@@ -62,7 +62,7 @@ function TO.evaluate(con::NS, x::SVector)
 	q3 = view(x, con.model.nq .+ (1:con.model.nq))
 	q2 = view(x, 1:con.model.nq)
 	λ = view(x, 2 * con.model.nq .+ (1:con.nc))
-	# return min.(λ, _P_func(con.model, q3) * (q3 - q2) / con.h)
+	# return min.(λ, abs.(_P_func(con.model, q3) * (q3 - q2) / con.h))
 	return [λ' * _P_func(con.model, q3) * (q3 - q2) / con.h]
 end
 

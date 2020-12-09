@@ -2,7 +2,7 @@ include("/home/taylor/Research/DirectMotionPlanning/src/DirectMotionPlanning.jl"
 include("/home/taylor/Research/DirectMotionPlanning/src/problem.jl")
 # include("/home/taylor/Research/DirectMotionPlanning/models/hopper.jl")
 include("/home/taylor/Research/DirectMotionPlanning/models/biped.jl")
-include("/home/taylor/Research/DirectMotionPlanning/models/biped.jl")
+include("/home/taylor/Research/DirectMotionPlanning/models/visualize.jl")
 include("/home/taylor/Research/DirectMotionPlanning/src/constraints/contact.jl")
 
 const DMP = Main.DirectMotionPlanning
