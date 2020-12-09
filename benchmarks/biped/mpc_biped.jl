@@ -11,7 +11,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 
 using JLD2
-@load joinpath(@__DIR__, "hopper_vertical_gait.jld2") x̄ _ū h̄
+@load joinpath(@__DIR__, "biped_gait.jld2") x̄ _ū h̄
 
 function Altro.initialize!(solver::Altro.iLQRSolver)
 	Altro.reset!(solver)
@@ -28,7 +28,7 @@ function Altro.initialize!(solver::Altro.iLQRSolver)
 end
 
 # Model and discretization
-include(joinpath(@__DIR__, "hopper.jl"))
+include(joinpath(@__DIR__, "biped.jl"))
 
 n, m = size(model)
 
@@ -42,12 +42,12 @@ h = h̄[1]
 
 # Objective
 q1 = x̄[1][1:model.nq]
-x1 = [q1; q1; 0.0]
-xT = [q1; q1; 0.0]
+x1 = [q1; q1; zeros(model.nc)]
+xT = [q1; q1; zeros(model.nc)]
 # X0 = [[[x̄[t]; 0.0] for t = 1:_T]..., [[x̄[t]; 0.0] for t = 2:_T]...]
 # U0 = [deepcopy(_ū)..., deepcopy(_ū)...]
-X0 = [[x̄[t]; 0.0] for t = 1:T]
-U0 = deepcopy(_ū)
+X0 = [[x̄[t]; zeros(model.nc)] for t = 1:T]
+U0 = [_ū[t][1:10] for t = 1:T-1]
 
 Q = Diagonal(1.0 * @SVector ones(n))
 R = Diagonal(1.0e-1 * @SVector ones(m))
@@ -59,8 +59,8 @@ cons = ConstraintList(n, m, T)
 
 add_constraint!(cons, GoalConstraint(xT, (1:2 * model.nq)), T)
 add_constraint!(cons, BoundConstraint(n, m,
-    x_min = [model.qL; model.qL; 0.0],
-    x_max = [model.qU; model.qU; Inf],
+    x_min = [model.qL; model.qL; zeros(model.nc)],
+    x_max = [model.qU; model.qU; Inf * ones(model.nc)],
     u_min = [-10.0 * ones(model.nu); zeros(m - model.nu)],
     u_max = [10.0 * ones(model.nu); Inf * ones(m - model.nu)]), 1:T-1)
 add_constraint!(cons, SD(n, model.nc, model), 1:T)
