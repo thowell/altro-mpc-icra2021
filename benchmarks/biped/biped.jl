@@ -589,7 +589,7 @@ function RobotDynamics.discrete_dynamics(::Type{PassThrough}, model::BipedTO, x:
 	r = f(y)
 
 	iter = 0
-	while norm(r, 2) > 1.0e-8 && iter < 10
+	while norm(r, 2) > 1.0e-12 && iter < 10
 	   ∇r = ForwardDiff.jacobian(f, y)
 
 	   Δy = -1.0 * ∇r \ r

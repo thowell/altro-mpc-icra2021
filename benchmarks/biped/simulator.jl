@@ -50,9 +50,9 @@ function step_contact(model, x1, u1, w1, h)
     # Pack trajectories into vector
     z0 = DMP.pack(x0, u0, prob)
 
-    @time z = DMP.solve(prob, copy(z0), tol = 1.0e-5, c_tol = 1.0e-5)
+    @time z = DMP.solve(prob, copy(z0), tol = 1.0e-4, c_tol = 1.0e-4)
 
-    @assert DMP.check_slack(z, prob) < 1.0e-4
+    @assert DMP.check_slack(z, prob) < 1.0e-2
     x, u = DMP.unpack(z, prob)
 
     return x[end]

@@ -11,21 +11,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 
 using JLD2
-@load joinpath(@__DIR__, "biped_gait.jld2") x̄ _ū h̄
-
-function Altro.initialize!(solver::Altro.iLQRSolver)
-	Altro.reset!(solver)
-    Altro.set_verbosity!(solver)
-    Altro.clear_cache!(solver)
-
-    solver.ρ[1] = solver.opts.bp_reg_initial
-    solver.dρ[1] = 0.0
-
-    # Initial rollout
-    # rollout!(solver)
-	# @warn "skip initial rollout!"
-    TO.cost!(solver.obj, solver.Z)
-end
+@load joinpath(@__DIR__, "biped_gait_no_slip.jld2") x̄ ū h̄ x_proj u_proj
 
 # Model and discretization
 include(joinpath(@__DIR__, "biped.jl"))
@@ -33,21 +19,18 @@ include(joinpath(@__DIR__, "biped.jl"))
 n, m = size(model)
 
 # Horizon
-# _T = length(x̄)
-T = length(x̄) #2 * length(x̄) - 1
+T = length(x_proj)
 
 # Time step
 tf = sum(h̄)
 h = h̄[1]
 
 # Objective
-q1 = x̄[1][1:model.nq]
-x1 = [q1; q1; zeros(model.nc)]
-xT = [q1; q1; zeros(model.nc)]
-# X0 = [[[x̄[t]; 0.0] for t = 1:_T]..., [[x̄[t]; 0.0] for t = 2:_T]...]
-# U0 = [deepcopy(_ū)..., deepcopy(_ū)...]
-X0 = [[x̄[t]; zeros(model.nc)] for t = 1:T]
-U0 = [_ū[t][1:10] for t = 1:T-1]
+x1 = [x_proj[1]; zeros(model.nc)]
+xT = [x_proj[T]; zeros(model.nc)]
+
+X0 = [[x_proj[t]; zeros(model.nc)] for t = 1:T]
+U0 = [u_proj[t][1:10] for t = 1:T-1]
 
 Q = Diagonal(1.0 * @SVector ones(n))
 R = Diagonal(1.0e-1 * @SVector ones(m))
@@ -57,24 +40,26 @@ obj = LQRObjective(Q, R, 1.0 * Q, xT, T)
 include(joinpath(@__DIR__, "contact_constraints.jl"))
 cons = ConstraintList(n, m, T)
 
-add_constraint!(cons, GoalConstraint(xT, (1:2 * model.nq)), T)
+# add_constraint!(cons, GoalConstraint(xT, (1:2 * model.nq)), T)
 add_constraint!(cons, BoundConstraint(n, m,
     x_min = [model.qL; model.qL; zeros(model.nc)],
     x_max = [model.qU; model.qU; Inf * ones(model.nc)],
-    u_min = [-10.0 * ones(model.nu); zeros(m - model.nu)],
-    u_max = [10.0 * ones(model.nu); Inf * ones(m - model.nu)]), 1:T-1)
+    u_min = [-8.0 * ones(model.nu); zeros(m - model.nu)],
+    u_max = [8.0 * ones(model.nu); Inf * ones(m - model.nu)]), 1:T-1)
 add_constraint!(cons, SD(n, model.nc, model), 1:T)
 add_constraint!(cons, IC(n, model.nc, model), 2:T)
 add_constraint!(cons, FC(m, model.nc, model), 1:T-1)
 add_constraint!(cons, NS(n, model.nc, model, h), 2:T)
 
+# cons[end]
+# TO.evaluate(cons[end], states(solver)[26])
 # Create and solve problem
 opts = SolverOptions(
     cost_tolerance_intermediate = 1.0e-2,
     penalty_scaling = 10.0,
-    penalty_initial = 1.0,
+    penalty_initial = 1000.0,
     projected_newton = false,
-    constraint_tolerance = 1.0e-1,
+    constraint_tolerance = 1.0e-3,
     iterations = 500,
     iterations_inner = 100,
     iterations_linesearch = 100,
@@ -84,97 +69,86 @@ prob = TO.Problem(model, obj, xT, tf,
     U0 = U0,
     X0 = X0,
     dt = h,
-    x0 = x1, constraints = cons, integration = PassThrough)
+    x0 = copy(x1), constraints = cons, integration = PassThrough)
 
 # FIRST PROCESSING
 solver = ALTROSolver(prob, opts, verbose = 2)
 cost(solver)           # initial cost
-@time solve!(solver)   # solve with ALTRO
+# @time solve!(solver)   # solve with ALTRO
 max_violation(solver)  # max constraint violation
+TO.get_constraints(solver)
+TO.findmax_violation(solver)
 cost(solver)           # final cost
 iterations(solver)     # total number of iterations
 
 # Get the state and control trajectories
+
+using Plots
 X = states(solver)
 U = controls(solver)
 
-using Plots
-plot(hcat(x̄...)')
-plot(hcat(_ū...)[1:10, :]', linetype=:steppost)
+plot(hcat(state_to_configuration(x_proj, model.nq)...)',
+	color = :red,
+	width = 2.0,
+	label = "")
+plot!(hcat(state_to_configuration(X, model.nq)...)',
+	color = :black,
+	width = 1.0,
+	label = "")
+
+plot(hcat(u_proj...)[1:4, :]',
+	linetype = :steppost,
+	color = :red,
+	width = 2.0,
+	label = "")
+plot!(hcat(U...)[1:4, :]',
+	linetype = :steppost,
+	color = :black,
+	width = 1.0,
+	label = "")
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model_sim, state_to_configuration(X), Δt = h)
-
-# SECOND PROCESSING
-prob = TO.Problem(model, obj, xT, tf,
-    U0 = U,
-    X0 = X,
-    dt = h,
-    x0 = x1, constraints = cons, integration = PassThrough)
-
-
-solver = ALTROSolver(prob, opts, verbose = 2)
-cost(solver)           # initial cost
-@time solve!(solver)   # solve with ALTRO
-max_violation(solver)  # max constraint violation
-cost(solver)           # final cost
-iterations(solver)
+visualize!(vis, model_sim, state_to_configuration(X, model.nq), Δt = h)
 
 # SHIFT TRAJECTORY
-Z_shift = deepcopy(TO.get_trajectory(solver))
-Z_shift_init = deepcopy(TO.get_trajectory(solver))
+len_stride = xT[1] - x1[1]
+X_track = deepcopy(states(TO.get_trajectory(solver)))
+X_tmp = deepcopy(states(TO.get_trajectory(solver)))
+U_track = deepcopy(controls(TO.get_trajectory(solver)))
+U_tmp = deepcopy(controls(TO.get_trajectory(solver)))
 
-x_shift = 0.035
-for t = 1:T
-    if t > 1
-        RD.set_state!(Z_shift_init[t], states(Z_shift_init)[t] + [x_shift; 0.0; 0.0; 0.0; x_shift; 0.0; 0.0; 0.0; 0.0])
-    end
-    RD.set_state!(Z_shift[t], states(Z_shift)[t] + [x_shift; 0.0; 0.0; 0.0; x_shift; 0.0; 0.0; 0.0; 0.0])
+for i = 1:2
+	for t = 1:T-1
+		_x = Array(copy(X_tmp[t+1]))
+		_x[1] += i * len_stride
+		_x[8] += i * len_stride
+		push!(X_track, SVector{n}(_x))
+		push!(U_track, U_tmp[t])
+	end
 end
-
-Z_track = TO.Traj([TO.get_trajectory(solver)[1:end]...,
-    TO.get_trajectory(solver)[2:end]...,
-    TO.get_trajectory(solver)[2:end]...,
-    TO.get_trajectory(solver)[2:end]...,
-	TO.get_trajectory(solver)[2:end]...,
-    TO.get_trajectory(solver)[2:end]...])
-
-# Z_track_shift = TO.Traj([TO.get_trajectory(solver)[1:end]...,
-#     TO.get_trajectory(solver)[2:end]...,
-#     Z_shift_init[2:end]...,
-#     Z_shift[2:end]...,
-#     Z_shift[2:end]...])
-Z_track_shift = TO.Traj([Z_shift[1:end]...,
-    Z_shift[2:end]...,
-    Z_shift[2:end]...,
-    Z_shift[2:end]...,
-	Z_shift[2:end]...,
-    Z_shift[2:end]...])
-X_track = states(Z_track)
-X_track_shift = states(Z_track_shift)
-U_track = controls(Z_track)
+push!(U_track, zeros(model.m))
+TT = length(X_track)
+t = [range(0, stop = h * (TT-1), length = TT)...]
+Z_track = TO.Traj([KnotPoint(X_track[k], U_track[k], h, t[k]) for k = 1:length(U_track)])
 
 using Plots
-plot(hcat(X_track[1:4:end]...)[1:model.nq, :]',
-    labels=["x" "z" "t" "r"],
+plot(hcat(state_to_configuration(states(Z_track)[1:1:end], model.nq)...)',
+    labels="",
     width = 2.0, legend = :right)
-plot(hcat(X_track_shift[1:4:end]...)[1:model.nq, :]',
-    labels=["x" "z" "t" "r"],
-    width = 2.0, legend = :right)
-plot(hcat(U_track[1:4:end]...)[1:model.nu, :]',
+plot(hcat(controls(Z_track)[1:1:end]...)[1:model.nu, :]',
     linetype=:steppost,
-    labels = ["orientation torque" "length force"],
+    labels = "",
     width = 2.0)
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X_track), Δt = h)
+visualize!(vis, model, state_to_configuration(X_track, model.nq), Δt = h)
 
 ## Model-predictive control tracking problem
 include("../mpc.jl")
 
-function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
+function run_biped_MPC(prob_mpc, opts_mpc, Z_track,
                             num_iters = length(Z_track) - prob_mpc.N)
     solver_mpc = ALTROSolver(prob_mpc, opts_mpc, verbose = 2)
 
@@ -200,12 +174,10 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         TO.set_initial_time!(prob_mpc, t0)
 
         # Update initial state by using 1st control, and adding some noise
-        # x0 = discrete_dynamics(TO.integration(prob_mpc),
-        #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 1.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
+		w0 = (i == 101 ? 0.0 * zeros(model.nq) .* randn(model.nq) : 0.0 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
-			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
+			control(prob_mpc.Z[1])[1:model.nu], w0, dt); zeros(model.nc)]
 
         # Update the initial state after the dynamics are propogated.
         TO.set_initial_state!(prob_mpc, x0)
@@ -255,25 +227,22 @@ opts_mpc = SolverOptions(
     projected_newton = false,
     iterations = 500)
 
-T_mpc = 101
+T_mpc = 51
 prob_mpc = gen_tracking_problem(prob, T_mpc,
-    Q = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])),
-    R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-1, 1.0e-1, 1.0e-1])),
-    Qf = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])))
+    Q = Diagonal(SVector{n}(1000.0 * ones(n))),
+    R = Diagonal(SVector{m}(1.0 * ones(m))),
+    Qf = Diagonal(SVector{n}(1000.0 * ones(n))))
 
-N_mpc = 500
-X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
+N_mpc = 51
+X_traj, res = run_biped_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 
-plot(hcat(X_track[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
+plot(hcat(X_track[1:1:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottomleft,
     width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
-    labels = "", legend = :bottomleft,
-    width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-plot!(hcat(X_traj[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
+plot!(hcat(X_traj[1:1:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottom,
     width = 1.0, color = ["red" "green" "blue" "orange"])
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X_traj), Δt = h)
+visualize!(vis, model, state_to_configuration(X_traj, model.nq), Δt = h)

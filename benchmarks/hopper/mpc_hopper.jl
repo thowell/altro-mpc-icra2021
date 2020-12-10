@@ -11,7 +11,7 @@ const TO = TrajectoryOptimization
 const RD = RobotDynamics
 
 using JLD2
-@load joinpath(@__DIR__, "hopper_vertical_gait.jld2") x̄ ū h̄ x_proj u_proj
+@load joinpath(@__DIR__, "hopper_vertical_gait_no_slip.jld2") x̄ ū h̄ x_proj u_proj
 
 # Model and discretization
 include(joinpath(@__DIR__, "hopper.jl"))
@@ -19,7 +19,7 @@ include(joinpath(@__DIR__, "hopper.jl"))
 n, m = size(model)
 
 # Horizon
-T = length(x̄)
+T = length(x_proj)
 
 # Time step
 tf = sum(h̄)
@@ -32,8 +32,8 @@ xT = [x_proj[T]; 0.0]
 X0 = [[x_proj[t]; 0.0] for t = 1:T]
 U0 = [u_proj[t][1:5] for t = 1:T-1]
 
-Q = Diagonal(1.0 * @SVector ones(n))
-R = Diagonal(1.0e-1 * @SVector ones(m))
+Q = Diagonal(100.0 * @SVector ones(n))
+R = Diagonal(1.0 * @SVector ones(m))
 obj = LQRObjective(Q, R, 1.0 * Q, xT, T)
 
 # Constraints
@@ -55,9 +55,9 @@ add_constraint!(cons, NS(n, model.nc, model, h), 2:T)
 opts = SolverOptions(
     cost_tolerance_intermediate = 1.0e-2,
     penalty_scaling = 10.0,
-    penalty_initial = 1.0,
+    penalty_initial = 1000.0,
     projected_newton = false,
-    constraint_tolerance = 1.0e-3,
+    constraint_tolerance = 1.0e-4,
     iterations = 500,
     iterations_inner = 100,
     iterations_linesearch = 100,
@@ -82,18 +82,25 @@ X = states(solver.solver_al.solver_uncon.Z̄)
 U = controls(solver)
 
 using Plots
-plot(hcat(state_to_configuration(X)...)',
+plot(hcat(state_to_configuration(x_proj, model.nq)...)',
+	color = :red,
+	width = 2.0)
+plot!(hcat(state_to_configuration(X, model.nq)...)',
 	color = :black,
 	width = 1.0)
 
-plot(hcat(U...)[1:2, :]',
+plot(hcat(u_proj...)[1:2, :]',
+	linetype = :steppost,
+	color = :red,
+	width = 2.0)
+plot!(hcat(U...)[1:2, :]',
 	linetype = :steppost,
 	color = :black,
 	width = 1.0)
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X), Δt = h)
+visualize!(vis, model, state_to_configuration(X, model.nq), Δt = h)
 
 # SHIFT TRAJECTORY
 Z_shift = deepcopy(TO.get_trajectory(solver))
@@ -139,7 +146,7 @@ plot(hcat(U_track[1:4:end]...)[1:model.nu, :]',
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X_track), Δt = h)
+visualize!(vis, model, state_to_configuration(X_track, model.nq), Δt = h)
 
 ## Model-predictive control tracking problem
 include("../mpc.jl")
@@ -220,18 +227,18 @@ opts_mpc = SolverOptions(
     cost_tolerance_intermediate = 1.0e-2,
     constraint_tolerance = 1.0e-2,
     reset_duals = false,
-    penalty_initial = 1000.0,
-    penalty_scaling = 10.0,
+    penalty_initial = 10.0,
+    penalty_scaling = 100.0,
     projected_newton = false,
     iterations = 500)
 
 T_mpc = 101
 prob_mpc = gen_tracking_problem(prob, T_mpc,
-    Q = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])),
-    R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-1, 1.0e-1, 1.0e-1])),
+    Q = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])),
+    R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-3, 1.0e-3, 1.0e-3])),
     Qf = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])))
 
-N_mpc = 500
+N_mpc = 50
 X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 
 plot(hcat(X_track[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
@@ -246,4 +253,4 @@ plot!(hcat(X_traj[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
 
 vis = Visualizer()
 render(vis)
-visualize!(vis, model, state_to_configuration(X_traj), Δt = h)
+visualize!(vis, model, state_to_configuration(X_traj, model.nq), Δt = h)
