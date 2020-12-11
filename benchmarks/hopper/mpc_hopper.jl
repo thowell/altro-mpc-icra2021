@@ -84,10 +84,12 @@ U = controls(solver)
 using Plots
 plot(hcat(state_to_configuration(x_proj, model.nq)...)',
 	color = :red,
-	width = 2.0)
+	width = 2.0,
+	label = "")
 plot!(hcat(state_to_configuration(X, model.nq)...)',
 	color = :black,
-	width = 1.0)
+	width = 1.0,
+	label = "")
 
 plot(hcat(u_proj...)[1:2, :]',
 	linetype = :steppost,
@@ -179,7 +181,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         # Update initial state by using 1st control, and adding some noise
         # x0 = discrete_dynamics(TO.integration(prob_mpc),
         #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 0.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
+		w0 = (i == 101 ? 50.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
 			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
@@ -223,34 +225,34 @@ end
 
 Random.seed!(1)
 opts_mpc = SolverOptions(
-    cost_tolerance = 1.0e-3,
-    cost_tolerance_intermediate = 1.0e-2,
+    cost_tolerance = 1.0e-4,
+    cost_tolerance_intermediate = 1.0e-4,
     constraint_tolerance = 1.0e-2,
     reset_duals = false,
     penalty_initial = 10.0,
-    penalty_scaling = 100.0,
+    penalty_scaling = 1000.0,
     projected_newton = false,
     iterations = 500)
 
 T_mpc = 101
 prob_mpc = gen_tracking_problem(prob, T_mpc,
     Q = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])),
-    R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-3, 1.0e-3, 1.0e-3])),
+    R = Diagonal(SVector{m}([1.0, 1.0, 1.0e-1, 1.0e-1, 1.0e-1])),
     Qf = Diagonal(SVector{n}([100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 0.0])))
 
-N_mpc = 50
+N_mpc = 500
 X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 
 plot(hcat(X_track[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottomleft,
     width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
-    labels = "", legend = :bottomleft,
-    width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
+# plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
+#     labels = "", legend = :bottomleft,
+#     width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
 plot!(hcat(X_traj[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottom,
     width = 1.0, color = ["red" "green" "blue" "orange"])
 
 vis = Visualizer()
-render(vis)
+open(vis)
 visualize!(vis, model, state_to_configuration(X_traj, model.nq), Δt = h)

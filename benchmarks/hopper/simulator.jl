@@ -14,7 +14,7 @@ function step_contact(model, x1, u1, w1, h)
     T = 2
 
     # Objective
-    obj = DMP.PenaltyObjective(1.0e4, model.m)
+    obj = DMP.PenaltyObjective(1.0e5, model.m)
 
     # Constraints
     con_dynamics = DMP.dynamics_constraints(model, T; w = [w1])

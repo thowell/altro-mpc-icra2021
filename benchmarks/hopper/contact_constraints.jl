@@ -28,7 +28,8 @@ function TO.evaluate(con::IC, x::SVector)
 	q3 = view(x, con.model.nq .+ (1:con.model.nq))
 	# q2 = view(x, 1:model.nq)
 	λ = view(x, 2 * con.model.nq .+ (1:con.nc))
-	return min.(λ, ϕ_func(con.model, q3))
+	# return min.(λ, ϕ_func(con.model, q3))
+	return λ .* ϕ_func(con.model, q3)
 end
 
 # friction cone
@@ -57,27 +58,12 @@ struct NS{T} <: TO.StateConstraint
 end
 TO.state_dim(con::NS) = con.n
 TO.sense(::NS) = TO.Equality()
-Base.length(con::NS) = 1
+Base.length(con::NS) = con.model.nc
 function TO.evaluate(con::NS, x::SVector)
 	q3 = view(x, con.model.nq .+ (1:con.model.nq))
 	q2 = view(x, 1:con.model.nq)
 	λ = view(x, 2 * con.model.nq .+ (1:con.nc))
 	# return min.(λ, abs.(_P_func(con.model, q3) * (q3 - q2) / con.h))
-	return [λ' * _P_func(con.model, q3) * (q3 - q2) / con.h]
+	# return [λ' * _P_func(con.model, q3) * (q3 - q2) / con.h]
+	return λ .* _P_func(con.model, q3) * (q3 - q2) / con.h
 end
-
-# # Slack control
-# struct Slack <: TO.ControlConstraint
-# 	m::Int
-# 	model
-# 	function Slack(m::Int, model)
-# 		new(m, model)
-# 	end
-# end
-# TO.control_dim(con::Slack) = con.m
-# TO.sense(::Slack) = TO.Equality()
-# Base.length(con::Slack) = con.model.ns
-# function TO.evaluate(con::Slack, u::SVector)
-# 	s = view(u, con.model.idx_s)
-# 	return s
-# end
