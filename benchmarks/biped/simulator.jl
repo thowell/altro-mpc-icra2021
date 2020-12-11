@@ -52,7 +52,7 @@ function step_contact(model, x1, u1, w1, h)
 
     @time z = DMP.solve(prob, copy(z0), tol = 1.0e-4, c_tol = 1.0e-4)
 
-    @assert DMP.check_slack(z, prob) < 1.0e-2
+    @assert DMP.check_slack(z, prob) < 1.0e-3
     x, u = DMP.unpack(z, prob)
 
     return x[end]

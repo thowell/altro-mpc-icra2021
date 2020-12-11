@@ -32,8 +32,8 @@ xT = [x_proj[T]; zeros(model.nc)]
 X0 = [[x_proj[t]; zeros(model.nc)] for t = 1:T]
 U0 = [u_proj[t][1:10] for t = 1:T-1]
 
-Q = Diagonal(1.0 * @SVector ones(n))
-R = Diagonal(1.0e-1 * @SVector ones(m))
+Q = Diagonal(100.0 * @SVector ones(n))
+R = Diagonal(100.0 * @SVector ones(m))
 obj = LQRObjective(Q, R, 1.0 * Q, xT, T)
 
 # Constraints
@@ -57,7 +57,7 @@ add_constraint!(cons, NS(n, model.nc, model, h), 2:T)
 opts = SolverOptions(
     cost_tolerance_intermediate = 1.0e-2,
     penalty_scaling = 10.0,
-    penalty_initial = 1000.0,
+    penalty_initial = 1.0e6,
     projected_newton = false,
     constraint_tolerance = 1.0e-3,
     iterations = 500,
@@ -74,10 +74,10 @@ prob = TO.Problem(model, obj, xT, tf,
 # FIRST PROCESSING
 solver = ALTROSolver(prob, opts, verbose = 2)
 cost(solver)           # initial cost
-# @time solve!(solver)   # solve with ALTRO
+@time solve!(solver)   # solve with ALTRO
 max_violation(solver)  # max constraint violation
 TO.get_constraints(solver)
-TO.findmax_violation(solver)
+# TO.findmax_violation(solver)
 cost(solver)           # final cost
 iterations(solver)     # total number of iterations
 
@@ -222,18 +222,18 @@ opts_mpc = SolverOptions(
     cost_tolerance_intermediate = 1.0e-4,
     constraint_tolerance = 1.0e-2,
     reset_duals = false,
-    penalty_initial = 1000.0,
+    penalty_initial = 1.0e3,
     penalty_scaling = 10.0,
     projected_newton = false,
     iterations = 500)
 
 T_mpc = 51
 prob_mpc = gen_tracking_problem(prob, T_mpc,
-    Q = Diagonal(SVector{n}(1000.0 * ones(n))),
+    Q = Diagonal(SVector{n}(10.0 * ones(n))),
     R = Diagonal(SVector{m}(1.0 * ones(m))),
-    Qf = Diagonal(SVector{n}(1000.0 * ones(n))))
+    Qf = Diagonal(SVector{n}(10.0 * ones(n))))
 
-N_mpc = 51
+N_mpc = 2
 X_traj, res = run_biped_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 
 plot(hcat(X_track[1:1:N_mpc]...)[model.nq .+ (1:model.nq), :]',

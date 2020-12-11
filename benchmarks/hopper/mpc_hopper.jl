@@ -108,7 +108,7 @@ visualize!(vis, model, state_to_configuration(X, model.nq), Δt = h)
 Z_shift = deepcopy(TO.get_trajectory(solver))
 Z_shift_init = deepcopy(TO.get_trajectory(solver))
 
-x_shift = 0.035
+x_shift = 0.1
 for t = 1:T
     if t > 1
         RD.set_state!(Z_shift_init[t], states(Z_shift_init)[t] + [x_shift; 0.0; 0.0; 0.0; x_shift; 0.0; 0.0; 0.0; 0.0])
@@ -181,7 +181,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         # Update initial state by using 1st control, and adding some noise
         # x0 = discrete_dynamics(TO.integration(prob_mpc),
         #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 50.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
+		w0 = (i == 101 ? 0.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 0.0 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
 			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
@@ -191,12 +191,12 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
         X_traj[i+1] = x0
 
         # Update tracking cost
-		# if i >= 101
-		# 	TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
-		# else
-        # 	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
-		# end
-		TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		if i >= 101
+			TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
+		else
+        	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		end
+		# TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
 
         # Shift the initial trajectory
         RD.shift_fill!(prob_mpc.Z)
@@ -246,9 +246,9 @@ X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track, N_mpc)
 plot(hcat(X_track[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottomleft,
     width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-# plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
-#     labels = "", legend = :bottomleft,
-#     width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
+plot(hcat(X_track_shift[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
+    labels = "", legend = :bottomleft,
+    width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
 plot!(hcat(X_traj[1:3:N_mpc]...)[model.nq .+ (1:model.nq), :]',
     labels = "", legend = :bottom,
     width = 1.0, color = ["red" "green" "blue" "orange"])
