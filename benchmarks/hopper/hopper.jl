@@ -46,14 +46,14 @@ ns = 1
 # Parameters
 g = 9.81 # gravity
 μ = 1.0  # coefficient of friction
-mb = 10.0 # body mass
-ml = 1.0  # leg mass
-Jb = 2.5 # body inertia
-Jl = 0.25 # leg inertia
+mb = 1.0 # body mass
+ml = 0.1  # leg mass
+Jb = 0.25 # body inertia
+Jl = 0.025 # leg inertia
 
 _n = 2 * nq
 _m = nu + nc + nb #+ nc + nb + ns
-d = 0
+d = nq
 
 idx_u = (1:nu)
 idx_λ = nu .+ (1:nc)
@@ -107,10 +107,10 @@ function fd(model::HopperTO, x⁺, x, u, h, t)
 	[q2⁺ - q2⁻;
 	((1.0 / h) * (M_func(model, q1) * (SVector{4}(q2⁺) - SVector{4}(q1))
     - M_func(model, q2⁺) * (SVector{4}(q3) - SVector{4}(q2⁺)))
-    + transpose(B_func(model, q3)) * SVector{2}(u_ctrl)
+	- h * G_func(model, q2⁺)
+    + h * (transpose(B_func(model, q3)) * SVector{2}(u_ctrl)
     + transpose(N_func(model, q3)) * SVector{1}(λ)
-    + transpose(P_func(model, q3)) * SVector{2}(b)
-    - h * G_func(model, q2⁺))]
+    + transpose(P_func(model, q3)) * SVector{2}(b)))]
 end
 
 function maximum_dissipation(model::HopperTO, x⁺, u, h)

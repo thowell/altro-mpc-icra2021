@@ -24,17 +24,20 @@ T = length(x_proj)
 # Time step
 tf = sum(h̄)
 h = h̄[1]
+t = [range(0, stop = tf, length = T)...]
 
 # Objective
 x1 = [x_proj[1]; zeros(model.nc)]
 xT = [x_proj[T]; zeros(model.nc)]
 
 X0 = [[x_proj[t]; zeros(model.nc)] for t = 1:T]
-U0 = [u_proj[t][1:10] for t = 1:T-1]
+U0 = [[u_proj[t][1:10] for t = 1:T-1]..., u_proj[end][1:10]]
 
-Q = Diagonal(100.0 * @SVector ones(n))
-R = Diagonal(100.0 * @SVector ones(m))
-obj = LQRObjective(Q, R, 1.0 * Q, xT, T)
+Q = Diagonal(1.0 * @SVector ones(n))
+R = Diagonal(1.0 * @SVector ones(m))
+# obj = LQRObjective(Q, R, 1.0 * Q, xT, T)
+Z0_track = TO.Traj([KnotPoint(X0[k], U0[k], h, t[k]) for k = 1:T])
+obj = TO.TrackingObjective(Q, R, Z0_track, Qf = 10.0 * Q)
 
 # Constraints
 include(joinpath(@__DIR__, "contact_constraints.jl"))
@@ -57,7 +60,7 @@ add_constraint!(cons, NS(n, model.nc, model, h), 2:T)
 opts = SolverOptions(
     cost_tolerance_intermediate = 1.0e-2,
     penalty_scaling = 10.0,
-    penalty_initial = 1.0e6,
+    penalty_initial = 1.0e3,
     projected_newton = false,
     constraint_tolerance = 1.0e-3,
     iterations = 500,
@@ -130,7 +133,7 @@ end
 push!(U_track, zeros(model.m))
 TT = length(X_track)
 t = [range(0, stop = h * (TT-1), length = TT)...]
-Z_track = TO.Traj([KnotPoint(X_track[k], U_track[k], h, t[k]) for k = 1:length(U_track)])
+Z_track = TO.Traj([KnotPoint(X_track[k], U_track[k], h, t[k]) for k = 1:TT])
 
 using Plots
 plot(hcat(state_to_configuration(states(Z_track)[1:1:end], model.nq)...)',
@@ -227,7 +230,7 @@ opts_mpc = SolverOptions(
     projected_newton = false,
     iterations = 500)
 
-T_mpc = 51
+T_mpc = copy(T)
 prob_mpc = gen_tracking_problem(prob, T_mpc,
     Q = Diagonal(SVector{n}(10.0 * ones(n))),
     R = Diagonal(SVector{m}(1.0 * ones(m))),
