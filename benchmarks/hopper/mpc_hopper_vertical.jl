@@ -124,6 +124,8 @@ Z_track = TO.Traj([TO.get_trajectory(solver)[1:end]...,
     TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...,
 	TO.get_trajectory(solver)[2:end]...,
+	TO.get_trajectory(solver)[2:end]...,
+	TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...,
 	TO.get_trajectory(solver)[2:end]...,
     TO.get_trajectory(solver)[2:end]...])
@@ -132,6 +134,8 @@ Z_track_shift = TO.Traj([Z_shift[1:end]...,
     Z_shift[2:end]...,
     Z_shift[2:end]...,
     Z_shift[2:end]...,
+	Z_shift[2:end]...,
+	Z_shift[2:end]...,
 	Z_shift[2:end]...,
     Z_shift[2:end]...,
 	Z_shift[2:end]...,
@@ -159,7 +163,8 @@ visualize!(vis, model, state_to_configuration(X_track, model.nq), Δt = h)
 
 ## Model-predictive control tracking problem
 include("../mpc.jl")
-
+push_dist = 0.0
+index_dist = 101
 function run_hopper_MPC(prob_mpc, opts_mpc, Z_track;
                             num_iters = length(Z_track) - prob_mpc.N,
 							verbose = 2)
@@ -189,7 +194,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track;
         # Update initial state by using 1st control, and adding some noise
         # x0 = discrete_dynamics(TO.integration(prob_mpc),
         #                             prob_mpc.model, prob_mpc.Z[1])
-		w0 = (i == 101 ? 0.0 * [1.0; 0.0; 0.0; 0.0] .* randn(model.nq) : 1.0e-5 * randn(model.nq))
+		w0 = (i == index_dist ? push_dist * [1.0; 0.0; 0.0; 0.0] : 1.0e-5 * randn(model.nq))
 		x0 = [step_contact(model_sim,
 			state(prob_mpc.Z[1])[1:2 * model.nq],
 			control(prob_mpc.Z[1])[1:model.nu], w0, dt); 0.0]
@@ -199,7 +204,7 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track;
         X_traj[i+1] = x0
 
         # Update tracking cost
-		if i >= 101
+		if i >= index_dist
 			TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
 		else
         	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
@@ -247,20 +252,46 @@ prob_mpc = gen_tracking_problem(prob, T_mpc,
     Q = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])),
     R = Diagonal(SVector{m}([1.0, 1.0, 1.0, 1.0, 1.0])),
     Qf = Diagonal(SVector{n}([10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0])))
-N_mpc = 700
+N_mpc = 900
 X_traj, res = run_hopper_MPC(prob_mpc, opts_mpc, Z_track,
 	num_iters = N_mpc, verbose = true)
 
-plot(hcat(state_to_configuration(X_track[1:1:N_mpc])...)',
-    labels = "", legend = :bottomleft,
-    width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-plot(hcat(state_to_configuration(X_track_shift[1:1:N_mpc])...)',
-    labels = "", legend = :bottomleft,
-    width = 2.0, color = ["red" "green" "blue" "orange"], linestyle = :dash)
-plot!(hcat(state_to_configuration(X_traj[1:1:N_mpc])...)',
-    labels = "", legend = :bottom,
-    width = 1.0, color = ["red" "green" "blue" "orange"])
+T_stack = length(X_track)
+tf_stack = h * (T_stack - 1)
+t_stack = range(0, stop = tf_stack, length = T_stack)
+q_track_stack = hcat(state_to_configuration(X_track[1:1:N_mpc])[2:end]...)
+q_track_shift_stack = hcat(state_to_configuration(X_track_shift[1:1:N_mpc])[2:end]...)
+q_traj_stack = hcat(state_to_configuration(X_traj[1:1:N_mpc])[2:end]...)
+u_track_stack = hcat(state_to_configuration(U_track[1:1:N_mpc])...)
+
+colors = ["red" "green" "blue" "orange"]
+labels = ["x" "z" "t" "r"]
+
+# plt = plot(title = "Hopper push recovery: $push_dist N",
+# 	xlabel = "time (s)", ylabel = "configuration")
+plt = plot(title = "Hopper reference change",
+	xlabel = "time (s)", ylabel = "configuration")
+
+for i = 1:model.nq
+	plt = plot!(t_stack[1:N_mpc], q_track_stack[i, 1:N_mpc],
+	    labels = "", legend = :topright,
+	    width = 2.0, color = colors[i], linestyle = :dash)
+	plt = plot!(t_stack[index_dist:N_mpc], q_track_shift_stack[i, index_dist:N_mpc],
+	    labels = "", legend = :topright,
+	    width = 2.0, color = colors[i], linestyle = :dash)
+	plt = plot!(t_stack[1:N_mpc], q_traj_stack[i, :],
+	    labels = labels[i], legend = :topright,
+	    width = 2.0, color = colors[i])
+end
+
+plot!(t_stack[101] * ones(100),
+	range(-1.0, stop = 1.0, length = 100),
+	color = :black, label = "",
+	linestyle = :dash,
+	ylims = (minimum(q_traj_stack), maximum(q_traj_stack)),
+	width = 2.0)
+display(plt)
 
 vis = Visualizer()
-render(vis)
+open(vis)
 visualize!(vis, model, state_to_configuration(X_traj, model.nq), Δt = h)
