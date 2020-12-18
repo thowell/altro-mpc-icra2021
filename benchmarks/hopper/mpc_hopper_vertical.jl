@@ -165,7 +165,7 @@ visualize!(vis, model, state_to_configuration(X_track, model.nq), Δt = h)
 
 ## Model-predictive control tracking problem
 include("../mpc.jl")
-push_dist = 100.0
+push_dist = 0.0
 index_dist = 101
 function run_hopper_MPC(prob_mpc, opts_mpc, Z_track;
                             num_iters = length(Z_track) - prob_mpc.N,
@@ -228,12 +228,12 @@ function run_hopper_MPC(prob_mpc, opts_mpc, Z_track;
         X_traj[i+1] = x0
 
         # Update tracking cost
-		# if i >= index_dist
-		# 	TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
-		# else
-        # 	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
-		# end
-		TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		if i >= index_dist
+			TO.update_trajectory!(prob_mpc.obj, Z_track_shift, k_mpc)
+		else
+        	TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
+		end
+		# TO.update_trajectory!(prob_mpc.obj, Z_track, k_mpc)
 
         # Shift the initial trajectory
         RD.shift_fill!(prob_mpc.Z)
@@ -300,9 +300,9 @@ for i = 1:model.nq
 	plt = plot!(t_stack[1:N_mpc], q_track_stack[i, 1:N_mpc],
 	    labels = "", legend = :topright,
 	    width = 2.0, color = colors[i], linestyle = :dash)
-	# plt = plot!(t_stack[index_dist:N_mpc], q_track_shift_stack[i, index_dist:N_mpc],
-	#     labels = "", legend = :topright,
-	#     width = 2.0, color = colors[i], linestyle = :dash)
+	plt = plot!(t_stack[index_dist:N_mpc], q_track_shift_stack[i, index_dist:N_mpc],
+	    labels = "", legend = :topright,
+	    width = 2.0, color = colors[i], linestyle = :dash)
 	plt = plot!(t_stack[1:N_mpc], q_traj_stack[i, :],
 	    labels = labels[i], legend = :bottomleft,
 	    width = 2.0, color = colors[i])
@@ -316,11 +316,14 @@ end
 # 	width = 2.0)
 display(plt)
 
-plot(hcat(U_track[1:N_mpc]...)[1:2, :]',
-	linetype = :steppost, width = 2.0, color = :red)
-plot!(hcat(U_traj[1:N_mpc]...)[1:2, :]', linetype = :steppost,
-	width = 1.0, color = :black)
+plot(hcat(U_track[1:4:N_mpc]...)[1:2, :]',
+	linetype = :steppost, width = 2.0, color = :black,
+	label = "")
+plot!(hcat(U_traj[1:4:N_mpc]...)[1:2, :]', linetype = :steppost,
+	width = 1.0, color = :orange, label = "",
+	xlabel = "time step (downsampled)",
+	ylabel = "control")
 
 vis = Visualizer()
-render(vis)
+open(vis)
 visualize!(vis, model, state_to_configuration(X_traj, model.nq), Δt = h)
